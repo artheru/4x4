@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<meta name="viewport" content=" width=555, initial-scale=0.55, target-desitydpi=160,minimal-ui">
+	
+	<title>4x4 看看你能否还原它？</title>
+	<link href="main.css" rel="stylesheet" type="text/css">
+	
+<div id='wx_pic' style='margin:0 auto;display:none;'>
+<img src='4x4.png' />
+</div>
+
+	<script src="jquery-2.1.1.min.js"></script>
+
+	<script>
+		var GameData={
+			PivotCell:null,
+			PivotPos:null,
+			eventDown:null,
+			eventUp:null,
+			eventMove:null,
+			reqHelp:null,
+			win:false
+		};
+		var rank=4, cwidth=125;
+		
+		function getXY(e){
+			if (e.clientX)
+				return {X:e.clientX,Y:e.clientY};
+			else
+				return {
+					X:e.originalEvent.targetTouches[0].pageX,
+					Y:e.originalEvent.targetTouches[0].pageY
+				}
+		}
+		
+		function edown(e){
+			if (GameData.eventDown) GameData.eventDown(e);
+		}
+		function eup(e){
+			if (GameData.eventUp) GameData.eventUp(e);
+		}
+		function emove(e){
+			if (GameData.eventMove) GameData.eventMove(e);
+		}
+		
+		function randomizeSquare(){
+			var RandStep=300;
+			var dt=["X","Y"], dp=["Y","X"], dq=["left","top"];
+			for(var i=0; i<RandStep; ++i){
+				var xy=Math.round(Math.random()), col=Math.round(Math.random()*(rank-1)), step=Math.round(Math.random()*(rank-2));
+				$(".game-cell:not(.dummy)").each(function(){
+					var t=$(this);
+					var curpos=t.data("curpos");
+					if (curpos[dp[xy]]!=col) return;
+					curpos[dt[xy]]=curpos[dt[xy]]+step;
+					if (curpos[dt[xy]]>=rank) curpos[dt[xy]]-=rank;
+					t.css(dq[xy],curpos[dt[xy]]*cwidth);
+				})
+			}
+		}
+		
+		function reshowSquare(fmt){
+			$(".game-cell:not(.dummy)").each(function(i){
+				var t=$(this);
+				var value=parseInt(fmt.substring(i,i+1),16);
+				t.data("rightpos",{X:value%4,Y:parseInt(value/4)});
+				t.text(value+1);
+			});
+			document.title="4x4 快来帮我还原它"
+		}
+		
+		function requireHelp(fmt){
+			if (!GameData.reqHelp){
+				var fmt=[];
+				$(".game-cell:not(.dummy)").each(function(i){
+					var t=$(this);
+					var ox=t.data("curpos");
+					fmt[ox.X+ox.Y*4]=(t.text()-1).toString(16);
+				});
+				GameData.reqHelp=fmt.join("");
+				alert("已记录游戏信息，点击确定后会刷新网页，然后你就可以分享网页向朋友们求助了～");
+				$.ajax("http://artheru.sinaapp.com/4x4.php?win=true")
+				window.location="http://artheru.sinaapp.com/4x4.html?"+GameData.reqHelp;
+			}
+		}
+		
+		function getDesc(){
+			var txt=["快来动动脑经还原4x4！","求大神帮忙还原4x4！我卡在这里：","我成功地还原了4x4，击败了全国%s的人，你也来试试吧！"];
+			if (GameData.win) {
+				return txt[2].replace("%s",GameData.win);
+			}
+			if (GameData.reqHelp) return txt[1];
+			return txt[0];
+		}
+		
+		function getURL(){
+			if (GameData.win)
+				return "http://artheru.sinaapp.com/4x4.html";
+			if (GameData.reqHelp)
+				return "http://artheru.sinaapp.com/4x4.html?"+GameData.reqHelp;
+			else
+				return "http://artheru.sinaapp.com/4x4.html";
+		}
+		
+		function checkWin(){
+			if (GameData.win) return;
+			var flag=true;
+			$(".game-cell:not(.dummy)").each(function(i){
+				var t=$(this);
+				var ori=t.data("curpos");
+				var cur=t.data("rightpos");
+				if (ori.X!=cur.X || ori.Y!=cur.Y)
+					flag=false;
+			});
+			if (flag==true){
+				document.title="4x4 我成功地还原了它，你也来试试吧";
+				GameData.win="91.1%";
+				alert("我和我的小伙伴们都惊呆了，恭喜您已通关！让您的朋友也来挑战一下吧！");
+				$.ajax("http://artheru.sinaapp.com/4x4win.php", {success:function(d){
+					GameData.win=(1-d)*100+"%";
+					document.title=getDesc();
+				}});
+			}
+		}
+		
+		function leaveMsg(){
+			var sR=prompt("请留下您想对作者说的话：");
+			if (sR) $.ajax("http://artheru.sinaapp.com/sendmessage.php?msg="+sR);
+		}
+		
+		$(function(){ //INIT GAME
+            setTimeout(function(){$.ajax("http://artheru.sinaapp.com/4x4.php")}, 5000);
+			
+			var loc=window.location.toString();
+			var s=loc.search(/\?[0-9a-fA-F]{16}/);
+			var squ="";
+			if (s!=-1)
+				squ=loc.substring(s+1,s+17);
+			
+			//Some Convenient constants:
+			var debug=function(x){return;$("#debug")[0].innerHTML=x;},
+				container=$("#grid-container");
+				
+			//Format Display.
+			for (var i=0; i<rank; ++i){
+				for (var j=0; j<rank; ++j){
+					container.append($("<div class='game-cell'>")
+						.data({"curpos":{X:j,Y:i},"rightpos":{X:j,Y:i}})
+						.css({"left":j*cwidth+"px","top":i*cwidth+"px"})
+						.text(i*rank+j+1)
+					);
+				}
+			}
+			
+			if (!squ || squ.length!=16)
+				randomizeSquare();
+			else
+				reshowSquare(squ);
+			
+			//Utility functions:
+			var movedir=
+				function(dir){					
+					debug("wait->mv");
+					//Convenient Transfrom:
+					var dp={X:"Y",Y:"X"}, dq={X:"left",Y:"top"}, rdq={X:"top",Y:"left"};
+					
+					//Add Slider and Dummy:
+					var slider=$("<div class='"+dir+"Slider'>");
+					var dummy=$("<div class='game-cell trigger dummy'>");
+					slider.css(rdq[dir],GameData.PivotCell[dp[dir]]*cwidth+"px");
+					dummy.css(rdq[dir],GameData.PivotCell[dp[dir]]*cwidth+"px");
+					container.append(slider).append(dummy);
+					
+					//Toggle Class:
+					$(".game-cell:not(.dummy)").each(function(){
+						var t=$(this);
+						if (t.data("curpos")[dp[dir]]==GameData.PivotCell[dp[dir]])
+							t.addClass("trigger NonDummy")
+							 .data("oripos",t.position());
+					})
+					
+					GameData.eventMove=function(e){
+						e.preventDefault();
+						var offset;
+						var xy=getXY(e);
+						offset=xy[dir]-GameData.PivotPos[dir];
+												
+						$(".trigger:not(.dummy)").each(function(){
+							var t=$(this);
+							var newpos=t.data("oripos")[dq[dir]]+offset;
+							var fw=rank*cwidth;
+							while(newpos>(rank-0.5)*cwidth) newpos-=fw;
+							while(newpos<=-0.5*cwidth) newpos+=fw;
+							t.css(dq[dir],newpos); //Move Position of Cells
+							//t.css("clip","");
+							if (newpos>(rank-1)*cwidth){
+								dummy.text(t.text());
+								dummy.css(dq[dir],newpos-fw);
+							}
+							if (newpos<0) {
+								//t.css("clip","rect(0px,"+cwidth+"px,"+cwidth+"px,"+(-newpos)+"px)");
+								dummy.text(t.text());
+								dummy.css(dq[dir],newpos+fw);
+							}
+						});
+					};					
+					
+					GameData.eventUp=function(e){
+						e.preventDefault();
+						debug("mv->ori");
+						
+						GameData.eventUp=null;
+						
+						//Enter State Ready.
+						$(".trigger:not(.dummy)").each(function(){
+							var t=$(this);
+							var p=t.position(),newP=0;
+							while (p[dq[dir]]>=(newP+0.5)*cwidth) ++newP;
+							t.data("curpos")[dir]=newP;
+							t.css(dq[dir],newP*cwidth);
+						});
+						
+						slider.remove();
+						dummy.remove();
+						$(".trigger").removeClass("trigger");
+						GameData.eventDown=cellEvent;
+						
+						checkWin();
+					}
+					
+					return null;
+				};
+				
+			var cellEvent=
+				function(e){
+					e.preventDefault();
+					debug("edge ori->wait");
+					//Enter State WaitForDirection.
+					GameData.eventDown=null;
+					
+					GameData.PivotCell=$(this).data("curpos");
+
+					GameData.PivotPos=getXY(e);
+						
+					GameData.eventMove=function(e){
+						var xy=getXY(e);
+						
+						//debug("move 0:"+xy.X+","+xy.Y);
+						
+						if (Math.abs(xy.X-GameData.PivotPos.X)-Math.abs(xy.Y-GameData.PivotPos.Y)>5){
+							GameData.eventMove=null
+							movedir('X');
+						}else
+						if (Math.abs(xy.Y-GameData.PivotPos.Y)-Math.abs(xy.X-GameData.PivotPos.X)>5){
+							GameData.eventMove=null
+							movedir('Y');
+						}
+					};
+										
+					GameData.eventUp=function(){
+						e.preventDefault();
+						//Enter State NoDirection
+						debug("wait->ori");
+						GameData.eventMove=GameData.eventUp=null;
+						//Enter State Origin.
+						GameData.eventDown=cellEvent;
+					};
+					
+					debug("wait");
+					if (e.clientX) 
+						return false;
+				};
+			
+			edown=cellEvent;
+			$(".game-cell").mousedown(edown);
+			$(".game-cell").on("touchstart",edown);
+			document.onmousemove=emove;
+			$(document).on("touchmove",emove);
+			document.onmouseup=eup;
+			$(document).on("touchend",eup);
+		})
+	</script>
+</head>
+<body onload="">
+<div id="page">
+	<div id="gamename">4x4</div>
+    <div id="author">by <a href="http://weibo.com/artheru"><i>Artheru</i></a> for <a href="http://weibo.com/u/1974907665"><i>Sherry</i></a></div>
+	
+	<!--Share button start...-->
+	<div class="bdsharebuttonbox" style="float:right"><a href="#" class="bds_more" data-cmd="more"></a><a href="#" class="bds_tsina" data-cmd="tsina" title="分享到新浪微博"></a><a href="#" class="bds_tqq" data-cmd="tqq" title="分享到腾讯微博"></a><a href="#" class="bds_renren" data-cmd="renren" title="分享到人人网"></a><a href="#" class="bds_weixin" data-cmd="weixin" title="分享到微信"></a></div>
+<script>window._bd_share_config={"common":{"bdSnsKey":{},"bdText":"","bdMini":"2","bdMiniList":false,"bdPic":"","bdStyle":"0","bdSize":"32","onBeforeClick":function(cmd,cfg){
+	cfg.bdUrl=getURL();cfg.bdDesc=getDesc();
+	if (cmd=="weixin" && window.WeixinJSBridge){
+			window.WeixinJSBridge.invoke('shareTimeline',{
+				"img_url":"artheru.sinaapp.com/4x4.png",
+				"link":getURL(),
+				"desc":getDesc(),
+				"title":"快来还原4x4"
+			});
+	}else return cfg;}
+},"share":{},"image":{"viewList":["tsina","tqq","renren","weixin"],"viewText":"分享到：","viewSize":"16"}};with(document)0[(getElementsByTagName('head')[0]||body).appendChild(createElement('script')).src='http://bdimg.share.baidu.com/static/api/js/share.js?v=89860593.js?cdnversion='+~(-new Date()/36e5)];</script>
+	<!--Share button end...-->
+
+	<div class="description">玩法简述：像魔方一样拖动4x4方阵的行或列，直到方阵还原就赢了（第一行从左到右为1,2,3,4，第二行及其后以此类推）！<b>如果您喜欢就分享一下吧～</b></div>
+	<div id="container">
+		<div id="grid-container">
+		</div>
+	</div>
+	
+	<div id="toolbox">
+		<div id="reqHlp" onclick="requireHelp()" class="btn">让朋友帮忙？</div>
+		<div id="shuffle" onclick="if (confirm('确定重新开始游戏？')) window.location='http://artheru.sinaapp.com/4x4.html'" class="btn">新的游戏</div>
+		<div id="reqHlp" onclick="leaveMsg()" class="btn">留个言吧？</div>
+	</div>
+	
+</div>
+</body>
+</html>
